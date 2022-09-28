@@ -125,127 +125,6 @@ top_hit_genes <- mld_cis_avg[order(-mld_cis_avg$avg_neg_zscore_minus_log2_integr
 top_50_hit_genes <- top_hit_genes[1:50]
 top_20_hit_genes <- top_hit_genes[1:20]
 
-###############################################################
-## CIRCOS
-###############################################################
-# alm_reads_for_rearrangements_withstatsbyread
-
-human_cytoband <- read.cytoband(species = "hg19")$df
-vector_cytoband <- read.csv(file = "source/metadata/CAG_Tomato_withBackbone/AAV-CAG-tdTomato.withBackbone.cytoband", header=F, fill=T, check.names = FALSE, sep = '\t')
-cytoband_rbind <- rbind(human_cytoband)
-cytoband <- read.cytoband(cytoband_rbind)
-# circos.initializeWithIdeogram(cytoband_df)
-
-extend_chromosomes = function(bed, chromosome, prefix = "zoom_") {
-  zoom_bed = bed[bed[[1]] %in% chromosome, , drop = FALSE]
-  zoom_bed[[1]] = paste0(prefix, zoom_bed[[1]])
-  rbind(bed, zoom_bed)
-}
-# circos.clear()
-
-
-cytoband_df = cytoband$df
-chromosome = cytoband$chromosome
-
-xrange = cytoband$chr.len
-# normal_chr_index = c(1:22,24:25)
-# zoomed_chr_index = 23
-
-
-bed_colnames <- c("chr","start","end","value1", "score", "strand")
-bed_was1 <- read.csv(file = "source/WAS/bed/WAS1001.SC-FE.sampleFiltered.noDup.bed", header=F, fill=T, check.names = FALSE, sep = '\t')
-names(bed_was1) <- bed_colnames
-bed_mld1 <- read.csv(file = "source/MLD/bed/IS_matrix_classic_strand_specific_method_mld_202004_MLD01.no0.annotated.bed", header=F, fill=T, check.names = FALSE, sep = '\t')
-names(bed_mld1) <- bed_colnames
-bed_bthal1 <- read.csv(file = "source/BTHAL/bed/BTHAL001.collDate.filt.gdf.byPMTF.SS.invivo.bed", header=F, fill=T, check.names = FALSE, sep = '\t')
-names(bed_bthal1) <- bed_colnames
-
-bed_hg19_genes_fullbody <- read.csv(file = "/Users/calabria.andrea/Dropbox (HSR Global)/TIGET/Workspace/Andrea/RefGene/hg19.ucsc.gemini.txGenes.bed", header=F, fill=T, check.names = FALSE, sep = '\t')
-names(bed_hg19_genes_fullbody) <- bed_colnames
-bed_hg19_genes <- read.csv(file = "/Users/calabria.andrea/Dropbox (HSR Global)/TIGET/Workspace/Andrea/RefGene/ucsc.hg19.knowngene.2021.bed", header=F, fill=T, check.names = FALSE, sep = '\t')
-
-bed_random <- generateRandomBed(nr = 5000, fun = function(k) sample(letters, k, replace = TRUE))
-
-bed_top_genes <- bed_hg19_genes_fullbody[which(bed_hg19_genes_fullbody$value1 %in% top_50_hit_genes),]
-bed_top_genes <- bed_hg19_genes_fullbody[which(bed_hg19_genes_fullbody$value1 %in% top_20_hit_genes),]
-# names(bed_chimera_hg19_annot) <- bed_col_names
-# bed_chimera_hg19_annot_samples <- as.data.frame( t(as.data.frame(lapply(strsplit(as.character(bed_chimera_hg19_annot$ISid_hg19), '@', fixed = T), function(x) {c(x)}))) )
-# names(bed_chimera_hg19_annot_samples) <- c("sample_label", "name")
-# bed_chimera_hg19_annot <- cbind(bed_chimera_hg19_annot, bed_chimera_hg19_annot_samples)
-
-# circos.clear()
-
-# circos.par("start.degree" = 90)
-# circos.initializeWithIdeogram(species = "hg19")
-# circos.genomicIdeogram()
-# circos.genomicDensity(list(bed_mld1, bed_was1, bed_bthal1), col = c("navyblue", "firebrick", "forestgreen"))
-# circos.genomicDensity(bed_2, col = c("#FF000080"))
-
-theight <- 0.1
-col_fun = colorRamp2(c(-1, 0, 1), c("white", "yellow", "red"))
-
-png(file = paste0("analyses/", analysis_folder_date, "/circos/", analysis_folder_date, ".genomic.density.withGenes.png", sep = ""), height=8, width=8, units = "in", res = 300)
-circos.par("start.degree" = 90)
-circos.initializeWithIdeogram(species = "hg19")
-# circos.genomicIdeogram()
-# circos.genomicDensity(bed_mld1, bed_was1, bed_bthal1), col = c("navyblue", "firebrick", "forestgreen"))
-# circos.genomicHeatmap(genomicDensity(bed_hg19_genes), col = col_fun)
-# circos.genomicLabels(bed, labels.column = 4)
-circos.genomicDensity(bed_hg19_genes, col = c("gray70"), track.height = 0.1)
-circos.genomicDensity(bed_mld1, col = c("navyblue"), track.height = theight)
-circos.genomicDensity(bed_was1, col = c("firebrick"), track.height = theight)
-circos.genomicDensity(bed_bthal1, col = c("forestgreen"), track.height = theight)
-circos.genomicLabels(bed_top_genes[1:20,1:4], labels.column = 4, side = "inside")
-
-# circos.initializeWithIdeogram(extend_chromosomes(cytoband_df, c("chrV")), chromosome.index = c("chr1", "chrV"),
-#                               sector.width = sector.width)
-# circos.genomicLink(bed_1, bed_2, col = rand_color(nrow(bed_1), transparency = 0.8), border = NA)
-dev.off()
-
-circos.clear()
-pdf(file = paste0("analyses/", analysis_folder_date, "/circos/", analysis_folder_date, ".genomic.density.withGenes.pdf", sep = ""), height=8, width=8)
-circos.par("start.degree" = 90)
-circos.initializeWithIdeogram(species = "hg19")
-# circos.genomicIdeogram()
-# circos.genomicDensity(bed_mld1, bed_was1, bed_bthal1), col = c("navyblue", "firebrick", "forestgreen"))
-circos.genomicDensity(bed_hg19_genes, col = c("gray70"), track.height = 0.08)
-circos.genomicDensity(bed_mld1, col = c("navyblue"), track.height = theight)
-circos.genomicDensity(bed_was1, col = c("firebrick"), track.height = theight)
-circos.genomicDensity(bed_bthal1, col = c("forestgreen"), track.height = theight)
-circos.genomicLabels(bed_top_genes[1:20,1:4], labels.column = 4, side = "inside")
-dev.off()
-
-circos.clear()
-pdf(file = paste0("analyses/circos/", analysis_folder_date, analysis_folder_date, ".genomic.density.withoutGenes.newcolors.pdf", sep = ""), height=8, width=8)
-circos.par("start.degree" = 90)
-circos.initializeWithIdeogram(species = "hg19")
-# circos.genomicIdeogram()
-# circos.genomicDensity(bed_mld1, bed_was1, bed_bthal1), col = c("navyblue", "firebrick", "forestgreen"))
-# circos.genomicDensity(bed_hg19_genes, col = c("gray70"), track.height = 0.08)
-circos.genomicDensity(bed_mld1, col = trials_colors[1], track.height = theight)
-circos.genomicDensity(bed_was1, col = trials_colors[2], track.height = theight)
-circos.genomicDensity(bed_bthal1, col = trials_colors[3], track.height = theight)
-circos.genomicLabels(bed_top_genes[1:20,1:4], labels.column = 4, side = "inside")
-dev.off()
-
-circos.clear()
-pdf(file = paste0("analyses/", analysis_folder_date, "/circos/", analysis_folder_date, ".genomic.density.withoutGenes.2.pdf", sep = ""), height=8, width=8)
-circos.par("start.degree" = 90)
-circos.initializeWithIdeogram(species = "hg19")
-# circos.genomicIdeogram()
-# circos.genomicDensity(bed_mld1, bed_was1, bed_bthal1), col = c("navyblue", "firebrick", "forestgreen"))
-# circos.genomicDensity(bed_hg19_genes, col = c("gray70"), track.height = 0.08)
-circos.genomicLabels(bed_top_genes[1:20,1:4], labels.column = 4, side = "outside")
-circos.genomicDensity(bed_mld1, col = c("navyblue"), track.height = theight)
-circos.genomicDensity(bed_was1, col = c("firebrick"), track.height = theight)
-circos.genomicDensity(bed_bthal1, col = c("forestgreen"), track.height = theight)
-dev.off()
-
-###############################################################
-## UMAP
-###############################################################
-
-
 
 
 
@@ -294,160 +173,10 @@ annotation_cols_to_get_onheatmap <- c("KnownGeneClass", "ClinicalRelevance", "Cr
 # write file in vivo
 write.table(x = all_results_cis, file = paste(cis_base_folder, analysis_folder_date, "/", analysis_folder_date, ".CIS.results_invivo.tsv", sep = ""), sep = "\t", quote = FALSE, row.names = FALSE, col.names = T, na = '')
 
-# all_results_cis_onlypositive <- all_results_cis[which(!is.na(all_results_cis$tdist_positive_and_correctedEM) & all_results_cis$tdist_positive_and_correctedEM > 0 & all_results_cis$n_IS_perGene > 3),]
-# write.table(x = all_results_cis_onlypositive, file = paste(cis_base_folder, analysis_folder_date, "/", analysis_folder_date, ".", ProjectID, ".CIS.results_invivo.onlyPositive.tsv", sep = ""), sep = "\t", quote = FALSE, row.names = FALSE, col.names = T)
-
-
-# plot_cis_alldetails <- ggplot(data = all_results_cis, aes(y = minus_log_p, x = neg_zscore_minus_log2_int_freq_tolerance, color = KnownGeneClass), na.rm = T, se = TRUE) + 
-#   geom_point(aes(size = average_TxLen), alpha = .5) +
-#   # geom_hex(bins = 60) +
-#   # geom_hex() +
-#   geom_hline(yintercept = significance_threshold_minus_log_p, color='coral', size=1, show.legend = T, linetype="dotted") +
-#   scale_y_continuous(limits = c(0, max(c((significance_threshold_minus_log_p + 0.5), max(all_results_cis$minus_log_p) )) ) ) + 
-#   facet_wrap( ~ SubjectID, ncol = 4) +
-#   geom_label_repel(
-#     data = subset(all_results_cis, !is.na(Onco1_TS2) & minus_log_p > annotation_threshold_ontots_log),
-#     # data = subset(all_results_cis, !is.na(Onco1_TS2) & minus_log2_integration_freq_withtolerance > 2.8),
-#     aes(label = GeneName, fill = KnownGeneClass, size = geneIS_frequency_byHitIS), 
-#     color = 'white',
-#     # size = 3.5, 
-#     segment.color = 'black') +
-#   geom_label_repel(
-#     # data = subset(all_results_cis, tdist_positive_and_correctedEM < 0.05),
-#     data = subset(all_results_cis, tdist_positive_and_corrected < 0.05),
-#     aes(label = GeneName, fill = KnownGeneClass), 
-#     # size = 5,
-#     box.padding = unit(0.35, "lines"),
-#     point.padding = unit(0.3, "lines"),
-#     color = 'white',
-#     segment.color = 'black'
-#   ) + 
-#   geom_label_repel(
-#     # data = subset(slice_all_results_cis_consecutive, tdist_positive_and_correctedEM < 0.05),
-#     data = subset(all_results_cis, ClinicalRelevance == TRUE ),
-#     aes(label = GeneName), 
-#     # size = 5,
-#     box.padding = unit(0.35, "lines"),
-#     point.padding = unit(0.3, "lines"),
-#     color = 'orange',
-#     segment.color = 'black'
-#   ) + 
-#   geom_label_repel(
-#     # data = subset(all_results_cis_avgByPatient, tdist_positive_and_correctedEM < 0.05),
-#     data = subset(all_results_cis, !is.na(KnownClonalExpension) ),
-#     aes(label = GeneName), 
-#     # size = 5,
-#     box.padding = unit(0.35, "lines"),
-#     point.padding = unit(0.3, "lines"),
-#     color = 'firebrick',
-#     segment.color = 'firebrick'
-#   ) + 
-#   theme(strip.text.y = element_text(size = 16, colour = "blue", angle = 0), strip.text.x = element_text(size = 16, colour = "blue", angle = 0)) +
-#   theme(strip.text = element_text(face="bold", size=16)) +
-#   # theme(strip.background = element_rect(fill="darkblue", colour="white", size=1)) +
-#   theme(axis.text.x = element_text(size=16), axis.text.y = element_text(size=16), axis.title = element_text(size=16), plot.title = element_text(size=20)) +
-#   labs(list(title = paste(ProjectID, "- Volcano plot of IS gene frequency and CIS results"), 
-#             y = "P-value Grubbs test (-log(p) base 10), Bonferroni correction", 
-#             x = "Integration frequency (log2)", 
-#             color = "Onco TumSupp Genes", 
-#             size = "Avg Transcr. Len", 
-#             subtitle = paste0("Significance threshold for annotation labeling: P-value < 0.05 (Bonferroni adjusted; -log = ", (round(-log(0.05, base = 10), 3)), ").\nOnco/TS genes source: UniProt (other genes labeled as 'Other'). Annotated if P-value > ", round(annotation_threshold_ontots_log, 3) )) ) 
-# 
-# pdf(file = paste(cis_base_folder, analysis_folder_date, "/", analysis_folder_date, ".", ProjectID, ".AllPatients.CIS.results_invivo.pdf", sep = ""), height=20, width=16)
-# print(plot_cis_alldetails)
-# dev.off()
-# png(file = paste(cis_base_folder, analysis_folder_date, "/", analysis_folder_date, ".", ProjectID, ".AllPatients.CIS.results_invivo.png", sep = ""), height=20, width=16, units = "in", res = 300)
-# print(plot_cis_alldetails)
-# dev.off()
-
-# all_results_cis_slice <- all_results_cis[which(all_results_cis$n_IS_perGene > 2 & all_results_cis$average_TxLen > 150 & !(all_results_cis$GeneName %in% c("WAS", "ARSA")) & all_results_cis$SubjectID %in% patients_for_pivotal_report),]
 all_results_cis_slice <- all_results_cis[which(all_results_cis$n_IS_perGene > 2 & all_results_cis$average_TxLen > 150 & !(all_results_cis$GeneName %in% c("WAS", "ARSA", "OPTC")) ),]
-# all_results_cis_slice$ClinicalTrial <- as.character(substr(as.character(all_results_cis_slice$SubjectID), 1, 3))
-# all_results_cis_slice$ClinicalTrial <- sub("BTH", "BTHAL", all_results_cis_slice$ClinicalTrial)
 all_results_cis_slice$ClinicalTrial <- all_results_cis_slice$ProjectID
 
-# # all_results_cis_slice <- all_results_cis[which(all_results_cis$n_IS_perGene > 2 & all_results_cis$average_TxLen > 150 & all_results_cis$SubjectID %in% patients_for_pivotal_report),]
-# plot_cis_fdr <- ggplot(data = all_results_cis_slice, aes(y = minus_log_p_fdr, x = neg_zscore_minus_log2_int_freq_tolerance, color = KnownGeneClass, fill = KnownGeneClass), na.rm = T, se = TRUE) +
-#   # geom_point(aes(size = average_TxLen), alpha = .5) +
-#   # geom_hex(bins = 60) +
-#   # geom_hex() +
-#   geom_point(alpha = .5) +
-#   # scale_size(name = "-log(p-value)") +
-#   # geom_smooth(method=lm, se=T) +
-#   # geom_text(aes(label=ifelse(tophit == TRUE, as.character(GeneName),'')), hjust=0, vjust=0) +
-#   # geom_text(aes(label=ifelse(scary == TRUE, as.character(GeneName),'')), hjust=0, vjust=0) + 
-#   # geom_density_2d(binwidth = 0.5) +
-#   geom_hline(yintercept = significance_threshold_minus_log_p, color='coral', size=1, show.legend = T, linetype="dotted") +
-#   scale_y_continuous(limits = c(0, max(c((significance_threshold_minus_log_p + 0.5), max(all_results_cis_slice$minus_log_p_fdr) )) ) ) + 
-#   scale_x_continuous(breaks = seq(-4, 4,2)) +
-#   # facet_grid( . ~ SubjectID ) +
-#   facet_wrap( ~ SubjectID, ncol = 4) +
-#   # geom_bin2d(bins = 50) +
-#   # geom_label_repel(
-#   #   data = subset(all_results_cis, !is.na(Onco1_TS2) & minus_log_p_fdr > annotation_threshold_ontots_log),
-#   #   # data = subset(all_results_cis, !is.na(Onco1_TS2) & minus_log2_integration_freq_withtolerance > 2.8),
-#   #   aes(label = GeneName, fill = KnownGeneClass), 
-#   #   color = 'white',
-#   #   # size = 3.5, 
-#   #   segment.color = 'black') +
-#   geom_label_repel(
-#     # data = subset(all_results_cis, tdist_positive_and_correctedEM < 0.05),
-#     data = subset(all_results_cis_slice, tdist_fdr < 0.05),
-#     aes(label = GeneName), 
-#     # size = 5,
-#     box.padding = unit(0.35, "lines"),
-#     point.padding = unit(0.3, "lines"),
-#     color = 'white',
-#     segment.color = 'black',
-#     max.overlaps = Inf
-#   ) + 
-#   # geom_label_repel(
-#   #   # data = subset(slice_all_results_cis_consecutive, tdist_positive_and_correctedEM < 0.05),
-#   #   data = subset(all_results_cis, ClinicalRelevance == TRUE ),
-#   #   aes(label = GeneName), 
-#   #   # size = 5,
-#   #   box.padding = unit(0.35, "lines"),
-#   #   point.padding = unit(0.3, "lines"),
-#   #   color = 'orange',
-#   #   segment.color = 'black'
-#   # ) + 
-#   # geom_label_repel(
-# #   # data = subset(all_results_cis_avgByPatient, tdist_positive_and_correctedEM < 0.05),
-# #   data = subset(all_results_cis, !is.na(KnownClonalExpension) ),
-# #   aes(label = GeneName), 
-# #   # size = 5,
-# #   box.padding = unit(0.35, "lines"),
-# #   point.padding = unit(0.3, "lines"),
-# #   color = 'firebrick',
-# #   segment.color = 'firebrick'
-# # ) + 
-# theme(strip.text.y = element_text(size = 16, colour = "blue", angle = 270), strip.text.x = element_text(size = 16, colour = "blue", angle = 0)) +
-#   theme(strip.text = element_text(face="bold", size=16)) +
-#   # theme(strip.background = element_rect(fill="darkblue", colour="white", size=1)) +
-#   theme(axis.text.x = element_text(size=14), axis.text.y = element_text(size=16), axis.title = element_text(size=16), plot.title = element_text(size=20)) +
-#   labs(title = paste(ProjectID, "- Volcano plot of IS gene frequency and CIS results"), 
-#        y = "P-value Grubbs test (-log(p) base 10), FDR correction", 
-#        x = "Integration frequency (log2)", 
-#        size = "Avg Transcr. Len",
-#        color = "Onco TumSupp Genes", 
-#        subtitle = paste0("Significance threshold for annotation labeling: P-value < 0.05 (FDR adjusted; -log = ", (round(-log(0.05, base = 10), 3)), ").\nOnco/TS genes source: UniProt (other genes labeled as 'Other'). Annotated if P-value > ", round(annotation_threshold_ontots_log, 3) )) 
-# 
-# # pdf(file = paste(cis_base_folder, analysis_folder_date, "/", analysis_folder_date, ".", ProjectID, ".AllPatients.CIS.results_invivo.LiBIS.FDR.pdf", sep = ""), height=16, width=24)
-# # print(plot_cis_fdr)
-# # dev.off()
-# png(file = paste(cis_base_folder, analysis_folder_date, "/", analysis_folder_date, ".", ProjectID, ".AllPatients.CIS.results.MNC_Whole.FDR.noWAS.png", sep = ""), height=9, width=16, units = "in", res = 300)
-# print(plot_cis_fdr)
-# dev.off()
-
-
-
-
 # now try to acquire all patients together
-# all_results_cis_patient_pvalcorrectedbonferroni <- dcast(data = all_results_cis, GeneName ~ SubjectID, value.var = "tdist_positive_and_corrected", fun.aggregate = mean)
-# rownames(all_results_cis_patient_pvalcorrectedbonferroni) <- all_results_cis_patient_pvalcorrectedbonferroni$GeneName
-# all_results_cis_patient_pvalcorrectedfdr <- dcast(data = all_results_cis, GeneName ~ SubjectID, value.var = "tdist_fdr", fun.aggregate = mean)
-# rownames(all_results_cis_patient_pvalcorrectedfdr) <- all_results_cis_patient_pvalcorrectedfdr$GeneName
-# all_results_cis_patient_pvalcorrectedfdr[is.na(all_results_cis_patient_pvalcorrectedfdr)] <- NA
 all_results_cis_avgByPatient <- sqldf(paste0("select ", annotation_cols_to_get_asSQLstring, ", ClinicalTrial, count(SubjectID) as ObservedInNPatients, 
                                              avg(tdist_fdr) as avg_tdist_fdr, stdev(tdist_fdr) as stdev_tdist_fdr, max(tdist_fdr) as max_tdist_fdr, min(tdist_fdr) as min_tdist_fdr,
                                              avg(minus_log_p_fdr) as avg_minus_log_p_fdr, stdev(minus_log_p_fdr) as stdev_minus_log_p_fdr, max(minus_log_p_fdr) as max_minus_log_p_fdr,
@@ -458,23 +187,8 @@ all_results_cis_avgByPatient <- sqldf(paste0("select ", annotation_cols_to_get_a
                                              where average_TxLen > 150
                                              group by ClinicalTrial, GeneName") )
 
-# all_results_cis_avgByPatient <- sqldf(paste0("select ", annotation_cols_to_get_asSQLstring, ", count(SubjectID) as ObservedInNPatients, ClinicalTrial,
-#                                           avg(tdist_fdr) as avg_tdist_fdr, stdev(tdist_fdr) as stdev_tdist_fdr,
-#                                           avg(minus_log_p_fdr) as avg_minus_log_p_fdr, stdev(minus_log_p_fdr) as stdev_minus_log_p_fdr,
-#                                           avg(geneIS_frequency_byHitIS) as avg_geneIS_frequency_byHitIS, stdev(geneIS_frequency_byHitIS) as stdev_geneIS_frequency_byHitIS,
-#                                           avg(neg_zscore_minus_log2_integration_freq_withtolerance) as avg_neg_zscore_minus_log2_integration_freq_withtolerance, stdev(neg_zscore_minus_log2_integration_freq_withtolerance) as stdev_neg_zscore_minus_log2_integration_freq_withtolerance,
-#                                           avg(tdist2t) as avg_tdist2t, stdev(tdist2t) as stdev_tdist2t
-#                                         from all_results_cis_slice 
-#                                         where 1 
-#                                         group by ClinicalTrial, GeneName") )
-
 
 all_results_cis_avgByPatient$positive_outlier <- ifelse(all_results_cis_avgByPatient$neg_zscore_minus_log2_int_freq_tolerance > 0, TRUE, FALSE)
-# all_results_cis_avgByPatient$positive_outlier <- ifelse(all_results_cis_avgByPatient$avg_neg_zscore_minus_log2_integration_freq_withtolerance > 0, TRUE, FALSE)
-# all_results_cis_avgByPatient$positive_outlier_and_significant <- ifelse((all_results_cis_avgByPatient$positive_outlier & (all_results_cis_avgByPatient$avg_tdist_fdr - all_results_cis_avgByPatient$stdev_tdist_fdr) < 0.05), TRUE, FALSE)
-# all_results_cis_avgByPatient$positive_outlier_and_significant <- ifelse(is.na(all_results_cis_avgByPatient$stdev_tdist_fdr),
-#                                                                         ifelse((all_results_cis_avgByPatient$positive_outlier & all_results_cis_avgByPatient$avg_tdist_fdr < 0.05), TRUE, FALSE),
-#                                                                         ifelse((all_results_cis_avgByPatient$positive_outlier & (all_results_cis_avgByPatient$avg_tdist_fdr - all_results_cis_avgByPatient$stdev_tdist_fdr) < 0.05), TRUE, FALSE) )
 all_results_cis_avgByPatient$positive_outlier_and_significant <- ifelse( (all_results_cis_avgByPatient$min_tdist_fdr < 0.05), 
                                                                          TRUE, 
                                                                          FALSE)
@@ -483,8 +197,6 @@ label_top_n_elements <- 20
 all_results_cis_avgByPatient$NTopTargeted <- ifelse(all_results_cis_avgByPatient$avg_neg_zscore_minus_log2_int_freq_tolerance >= sort(all_results_cis_avgByPatient$avg_neg_zscore_minus_log2_int_freq_tolerance, decreasing = T)[label_top_n_elements], TRUE, FALSE)
 
 write.table(x = all_results_cis_avgByPatient, file = paste(cis_base_folder, analysis_folder_date, "/", analysis_folder_date, ".CIS.results_invivo.avg_by_trial.tsv", sep = ""), sep = "\t", quote = FALSE, row.names = FALSE, col.names = T, na = '')
-
-# all_results_cis_avgByPatient <- read.csv(file = paste(cis_base_folder, analysis_folder_date, "/", analysis_folder_date, ".CIS.results_invivo.avg_by_trial.tsv", sep = ""), header=TRUE, fill=T, sep='\t', check.names = FALSE, na.strings = c("NONE", "NA", "NULL", "NaN", ""))
 
 
 all_results_cis_avgByPatient_slice <- all_results_cis_avgByPatient[which(!(all_results_cis_avgByPatient$GeneName %in% c("WAS", "ARSA", "OPTC"))),]
@@ -613,54 +325,21 @@ genes_observed_in_all_trials <- as.character(all_results_cis_slice_castfortriplo
 all_results_cis_slice_castfortriplot_allshared <- all_results_cis_slice_castfortriplot[which(all_results_cis_slice_castfortriplot$sharing == 3), c(2:4)]
 all_results_cis_slice_castfortriplot_allshared_abs <- abs(all_results_cis_slice_castfortriplot_allshared)
 
-# # non funziona
-# ggtern(data=all_results_cis_slice_castfortriplot_allshared_abs, aes(x=MLD, y=WAS, z=BTHAL)) +
-#   geom_point() + geom_density_2d(color = "red")
-
 write.table(all_results_cis_slice_castfortriplot_allshared, file = paste(cis_base_folder, analysis_folder_date, "/", analysis_folder_date, ".targetedGenes.zscore.results_invivo.avg_by_trial.csv", sep = ""), sep = ",", quote = FALSE, row.names = FALSE, col.names = TRUE, na = '')
-
-# all_results_cis_avgByPatient_slice_castfortriplot <- dcast(data = all_results_cis_avgByPatient_slice, GeneName ~ Study, value.var = "avg_neg_zscore_minus_log2_int_freq_tolerance", fun.aggregate = mean)
-# all_results_cis_avgByPatient_slice_castfortriplot$sharing <- apply(all_results_cis_avgByPatient_slice_castfortriplot[2:ncol(all_results_cis_avgByPatient_slice_castfortriplot)], 1, function(x) {length(x[!is.na(x)])})
 
 # try analysis of variance by gene (min 3 patients)
 all_results_cis_slice_genecount_onpatients_bytrial <- sqldf(paste0("select ClinicalTrial, GeneName, count(*) as NPatients from all_results_cis_slice where GeneName in ('", paste(genes_observed_in_all_trials, collapse = "','", sep = ''), "') group by ClinicalTrial, GeneName"))
-# all_results_cis_slice_genecount_onpatients_bytrial_min3pt <- all_results_cis_slice_genecount_onpatients_bytrial[which(all_results_cis_slice_genecount_onpatients_bytrial$NPatients >= 3), "GeneName"]
 all_results_cis_slice_genecount_onpatients_bytrial_cast <- dcast(data = all_results_cis_slice_genecount_onpatients_bytrial, GeneName ~ ClinicalTrial, value.var = "NPatients", fun.aggregate = mean)
 all_results_cis_slice_genecount_onpatients_bytrial_cast$minPatients <- apply(all_results_cis_slice_genecount_onpatients_bytrial_cast[2:4], 1, min)
 all_results_cis_slice_genecount_onpatients_bytrial_cast_slice <- all_results_cis_slice_genecount_onpatients_bytrial_cast[which(all_results_cis_slice_genecount_onpatients_bytrial_cast$minPatients >= 3 & all_results_cis_slice_genecount_onpatients_bytrial_cast$minPatients <= 9),]
-# all_results_cis_slice_genecount_onpatients_bytrial_cast_slice_min4 <- all_results_cis_slice_genecount_onpatients_bytrial_cast[which(all_results_cis_slice_genecount_onpatients_bytrial_cast$minPatients >= 4 & all_results_cis_slice_genecount_onpatients_bytrial_cast$minPatients <= 9),]
-# all_results_cis_slice_genecount_onpatients_bytrial_cast_slice_min5 <- all_results_cis_slice_genecount_onpatients_bytrial_cast[which(all_results_cis_slice_genecount_onpatients_bytrial_cast$minPatients >= 5 & all_results_cis_slice_genecount_onpatients_bytrial_cast$minPatients <= 9),]
-# all_results_cis_slice_genecount_onpatients_bytrial_cast_slice_min2 <- all_results_cis_slice_genecount_onpatients_bytrial_cast[which(all_results_cis_slice_genecount_onpatients_bytrial_cast$minPatients >= 2 & all_results_cis_slice_genecount_onpatients_bytrial_cast$minPatients <= 9),]
-# all_results_cis_slice_genecount_onpatients_bytrial_cast_slice_min8 <- all_results_cis_slice_genecount_onpatients_bytrial_cast[which(all_results_cis_slice_genecount_onpatients_bytrial_cast$minPatients >= 8 & all_results_cis_slice_genecount_onpatients_bytrial_cast$minPatients <= 9),]
 
 # now you can filter by selected genes
-# all_results_cis_slice_sharedgenesmin2pt <- all_results_cis_slice[which(all_results_cis_slice$GeneName %in% as.character(all_results_cis_slice_genecount_onpatients_bytrial_cast_slice_min2$GeneName)),]
 all_results_cis_slice_sharedgenesmin3pt <- all_results_cis_slice[which(all_results_cis_slice$GeneName %in% as.character(all_results_cis_slice_genecount_onpatients_bytrial_cast_slice$GeneName)),]
-# all_results_cis_slice_sharedgenesmin4pt <- all_results_cis_slice[which(all_results_cis_slice$GeneName %in% as.character(all_results_cis_slice_genecount_onpatients_bytrial_cast_slice_min4$GeneName)),]
-# all_results_cis_slice_sharedgenesmin5pt <- all_results_cis_slice[which(all_results_cis_slice$GeneName %in% as.character(all_results_cis_slice_genecount_onpatients_bytrial_cast_slice_min5$GeneName)),]
-# all_results_cis_slice_sharedgenesmin8pt <- all_results_cis_slice[which(all_results_cis_slice$GeneName %in% as.character(all_results_cis_slice_genecount_onpatients_bytrial_cast_slice_min8$GeneName)),]
 
-# # no min N patients
-# kruskal.test(neg_zscore_minus_log2_integration_freq_withtolerance ~ ClinicalTrial, data = all_results_cis_slice)
-# pairwise.wilcox.test(all_results_cis_slice_sharedgenesmin3pt$neg_zscore_minus_log2_integration_freq_withtolerance, all_results_cis_slice_sharedgenesmin3pt$ClinicalTrial, p.adjust.method = "BH")
-# # min 2
-# kruskal.test(neg_zscore_minus_log2_integration_freq_withtolerance ~ ClinicalTrial, data = all_results_cis_slice_sharedgenesmin2pt)
-# pairwise.wilcox.test(all_results_cis_slice_sharedgenesmin2pt$neg_zscore_minus_log2_integration_freq_withtolerance, all_results_cis_slice_sharedgenesmin2pt$ClinicalTrial, p.adjust.method = "BH")
-# pairwise.wilcox.test(all_results_cis_slice_sharedgenesmin2pt$neg_zscore_minus_log2_integration_freq_withtolerance, all_results_cis_slice_sharedgenesmin2pt$ClinicalTrial, p.adjust.method = "fdr")
 # min 3
 kruskal.test(neg_zscore_minus_log2_integration_freq_withtolerance ~ ClinicalTrial, data = all_results_cis_slice_sharedgenesmin3pt)
 pairwise.wilcox.test(all_results_cis_slice_sharedgenesmin3pt$neg_zscore_minus_log2_integration_freq_withtolerance, all_results_cis_slice_sharedgenesmin3pt$ClinicalTrial, p.adjust.method = "BH")
 pairwise.wilcox.test(all_results_cis_slice_sharedgenesmin3pt$neg_zscore_minus_log2_integration_freq_withtolerance, all_results_cis_slice_sharedgenesmin3pt$ClinicalTrial, p.adjust.method = "fdr")
-# # min 4
-# kruskal.test(neg_zscore_minus_log2_integration_freq_withtolerance ~ ClinicalTrial, data = all_results_cis_slice_sharedgenesmin4pt)
-# pairwise.wilcox.test(all_results_cis_slice_sharedgenesmin3pt$neg_zscore_minus_log2_integration_freq_withtolerance, all_results_cis_slice_sharedgenesmin3pt$ClinicalTrial, p.adjust.method = "BH")
-# pairwise.wilcox.test(all_results_cis_slice_sharedgenesmin3pt$neg_zscore_minus_log2_integration_freq_withtolerance, all_results_cis_slice_sharedgenesmin3pt$ClinicalTrial, p.adjust.method = "fdr")
-# # min 5
-# kruskal.test(neg_zscore_minus_log2_integration_freq_withtolerance ~ ClinicalTrial, data = all_results_cis_slice_sharedgenesmin5pt)
-# pairwise.wilcox.test(all_results_cis_slice_sharedgenesmin5pt$neg_zscore_minus_log2_integration_freq_withtolerance, all_results_cis_slice_sharedgenesmin3pt$ClinicalTrial, p.adjust.method = "BH")
-# pairwise.wilcox.test(all_results_cis_slice_sharedgenesmin3pt$neg_zscore_minus_log2_integration_freq_withtolerance, all_results_cis_slice_sharedgenesmin3pt$ClinicalTrial, p.adjust.method = "fdr")
-# # min 8
-# # kruskal.test(neg_zscore_minus_log2_integration_freq_withtolerance ~ ClinicalTrial, data = all_results_cis_slice_sharedgenesmin8pt)
 
 # ANOVA
 # Compute the analysis of variance
@@ -726,32 +405,6 @@ ego_mf <- enrichGO(gene          = gene.df$ENTREZID,
                    qvalueCutoff  = 0.05,
                    readable      = TRUE)
 
-# ggo <- groupGO(gene     = gene.df$ENTREZID,
-#                OrgDb    = org.Hs.eg.db,
-#                ont      = "CC",
-#                level    = 3,
-#                readable = TRUE)
-# ego2 <- enrichGO(gene          = gene.df$SYMBOL,
-#                 # universe      = names(geneList),
-#                 # keyType       = 'ENSEMBL',
-#                 keyType       = 'SYMBOL',
-#                 OrgDb         = org.Hs.eg.db,
-#                 ont           = "CC",
-#                 pAdjustMethod = "BH",
-#                 pvalueCutoff  = 0.01,
-#                 qvalueCutoff  = 0.05,
-#                 readable      = TRUE)
-# 
-# ego2 <- enrichGO(gene          = gene.df$SYMBOL,
-#                 # universe      = names(geneList),
-#                 # keyType       = 'ENSEMBL',
-#                 keyType       = 'SYMBOL',
-#                 OrgDb         = org.Hs.eg.db,
-#                 ont           = "CC",
-#                 pAdjustMethod = "BH",
-#                 pvalueCutoff  = 0.01,
-#                 qvalueCutoff  = 0.05,
-#                 readable      = TRUE)
 
 library(msigdbr)
 all_gene_sets <- msigdbr(species = "Homo sapiens")
@@ -796,19 +449,6 @@ hsGO_mf <- godata('org.Hs.eg.db', ont="MF")
 hsGO_bp <- godata('org.Hs.eg.db', ont="BP")
 
 goSim("GO:0019886", "GO:0045637", semData=hsGO_bp, measure="Jiang")
-
-# go1 <- as.data.frame(ego_bp)$ID
-# mgoSim(go1, go2, semData=hsGO, measure="Wang", combine=NULL)
-# mgoSim(go1, go2, semData=hsGO, measure="Jiang", combine=NULL)
-
-
-
-
-# mld_GOlist <- sqldf("select GeneName, max(avg_minus_log_p_fdr) as p from all_results_cis_avgByPatient where positive_outlier_and_significant like 1 and ClinicalTrial like 'MLD' group by GeneName order by p desc")
-# was_GOlist <- sqldf("select GeneName, max(avg_minus_log_p_fdr) as p from all_results_cis_avgByPatient where positive_outlier_and_significant like 1 and ClinicalTrial like 'WAS' group by GeneName order by p desc")
-
-# mld_GOlist <- sqldf("select GeneName, max(avg_minus_log_p_fdr) as p from all_results_cis_avgByPatient where ClinicalTrial like 'MLD' group by GeneName order by p desc limit 20") 
-# was_GOlist <- sqldf("select GeneName, max(avg_minus_log_p_fdr) as p from all_results_cis_avgByPatient where ClinicalTrial like 'WAS' group by GeneName order by p desc limit 20") 
 
 # WAS gamma retro
 bed_short_col_names <- c("chr", "integration_locus", "is_end", "hg19_annot_elem_chr", "annotsource", "hg19_annot_elem_type", "hg19_annot_elem_start", "hg19_annot_elem_end", "f1", "hg19_annot_elem_strand", "f2", "hg19_annot_elem_details", "hg19_annot_elem_distance")
@@ -2566,7 +2206,6 @@ dev.off()
 
 
 # try statistical comparisons
-# tutorial on repeated measures in R and ANOVA: https://www.r-bloggers.com/2021/04/repeated-measures-of-anova-in-r-complete-tutorial/
 
 # plot grid data raw
 plot_hindex_by_marker <-
@@ -2777,19 +2416,6 @@ png(file = paste(h_base_folder, "/", analysis_folder_date, "/", analysis_folder_
 plot(plot_hindex_by_marker_study_boxplot_overtime_postfiltering_mean)
 dev.off()
 
-
-
-##### in progress ........
-# res<-anova_test(data=all_results_h_slice_scaled_stable_min3_nooutliers_normal, dv=Hindex, wid=c(SubjectID, CellType), within=TimepointMonths) 
-# get_anova_table(res) 
-
-# from https://www.sheffield.ac.uk/polopoly_fs/1.885219!/file/105_RepeatedANOVA.pdf
-library(ez)
-repeat1 <- ezANOVA(data=all_results_h_slice_scaled_stable_min3_nooutliers_normal,
-                   dv=.(Hindex),
-                   wid=.(SubjectID, CellType),
-                   within=.(TimepointMonths),
-                   type=3)
 
 
 ###############################################################
@@ -3048,23 +2674,7 @@ allpatients_shared34_stats_noCD34$Study <- factor(allpatients_shared34_stats_noC
 allpatients_shared34_stats_noCD34 <- allpatients_shared34_stats_noCD34 %>% group_by(SubjectID, Tissue, TimepointMonths) %>% mutate(PercNIS_onOverallSharedCD34BM_zscaled=scale(PercNIS_onOverallSharedCD34BM))
 allpatients_shared34_stats_noCD34[is.na(allpatients_shared34_stats_noCD34)] <- NA
 
-# 
-# allpatients_shared34_stats_noCD34 <- allpatients_shared34_stats[which(!(allpatients_shared34_stats$CellMarker %in% c("CD34", "Plasma")) ),]
-# allpatients_shared34_stats_noCD34 <- allpatients_shared34_stats[which(!(allpatients_shared34_stats$CellMarker %in% c("CD34", "Plasma", "CD36")) & 
-#                                                                         !(allpatients_shared34_stats$StudyID == "WAS" & allpatients_shared34_stats$PCRMethod %in% c("SLiM|LAM-PCR", "SLiM") ) & 
-#                                                                         !(allpatients_shared34_stats_noCD34$SubjectID %in% c(patients_to_exclude, patients_without_erythroid, patients_uncertainty)) 
-#                                                                       ),]
 
-# # allpatients_shared34_stats_supergroup <- read.csv(file = paste("/Users/calabria.andrea/Dropbox (FONDAZIONE TELETHON)/Clinical Trial MLD/analyses/20.compare_trials/202004/202004.MLD_WAS_BTHAL.SharingIS_CD34BM.tsv", sep = ""), header=TRUE, fill=T, sep='\t', check.names = F, row.names = 1)
-# allpatients_shared34_stats_supergroup_noCD34 <- allpatients_shared34_stats_noCD34[which(!(allpatients_shared34_stats_noCD34$CellMarker %in% c("CD34")) &
-#                                                                                           !(allpatients_shared34_stats_noCD34$SubjectID %in% c(patients_to_exclude, patients_without_erythroid, patients_uncertainty)) ),]
-# allpatients_shared34_stats_supergroup_noCD34 <- allpatients_shared34_stats_noCD34
-# allpatients_shared34_stats_supergroup_noCD34$Study <- factor(allpatients_shared34_stats_supergroup_noCD34$StudyID, levels = study_list)
-# 
-# allpatients_shared34_stats_supergroup_pediatriconly_noCD34 <- allpatients_shared34_stats_noCD34[which(!(allpatients_shared34_stats_noCD34$CellMarker %in% c("CD34")) & 
-#                                                                                                         !(allpatients_shared34_stats_noCD34$SubjectID %in% c(patients_to_exclude, patients_without_erythroid, patients_uncertainty)) ),]
-# allpatients_shared34_stats_supergroup_pediatriconly_noCD34$PercNIS_onOverallSharedCD34BM <- (allpatients_shared34_stats_supergroup_pediatriconly_noCD34$SharedCD34IS_NumIS * 100) / allpatients_shared34_stats_supergroup_pediatriconly_noCD34$Progenitor_nIS
-# allpatients_shared34_stats_supergroup_pediatriconly_noCD34 <- allpatients_shared34_stats_supergroup_pediatriconly_noCD34[which(allpatients_shared34_stats_supergroup_pediatriconly_noCD34$PercNIS_onOverallSharedCD34BM > 0),]
 
 allpatients_shared34_stats_supergroup_noCD34 <- allpatients_shared34_stats_noCD34
 
@@ -3468,38 +3078,6 @@ png(file = paste0("analyses/cd34output/", analysis_folder_date, "/", paste(study
 print(p_lines_mbte_trial)
 dev.off()
 
-
-# p <- ggplot(data = allpatients_shared34_stats_supergroup_noCD34, aes(x = FollowUp, y = PercNIS_onOverallSharedCD34BM, color = CellMarker), na.rm = T, se = TRUE)
-# print(
-#   p + 
-#     geom_point(size=4, alpha = .7) +
-#     geom_line(size=3, alpha = .7) +
-#     # facet_wrap( ~ StudyID, ncol = 4) +
-#     facet_grid(. ~ StudyID, scales = "free", space = "free") +
-#     scale_x_continuous(breaks = seq(0, max(allpatients_shared34_stats_supergroup_noCD34$FollowUp, na.rm = T), 6) ) +
-#     # stat_compare_means(comparisons = my_comparisons, label.y = c(40, 50, 30)) + # Add pairwise comparisons p-value
-#     # stat_compare_means(label.y = 60) + # Add global p-value
-#     theme(strip.text.x = element_text(size = 16, colour = "darkblue", angle = 0, face="bold"), strip.text.y = element_text(size = 16, colour = "darkred", angle = 270, face="bold")) +
-#     theme(axis.text.x = element_text(size=16), axis.text.y = element_text(size=16), axis.title = element_text(size=18), plot.title = element_text(size=20)) +
-#     labs(list(title = paste("Profile of CD34 BM output towards Myeloid/Lymphoid/Erythroid lineages"), x = "FollowUp months after GT", y = "Perc. of IS shared with CD34 BM", subtitle = "All clinical trials included, all patients included. WAS clinical trial includes early progenitors as supergroup of CD34."))
-# )
-# print(
-#   p + 
-#     # geom_point(size=4, alpha = .4) +
-#     geom_point(aes(shape = CellMarker), size=4, alpha = .3) +
-#     # geom_line(size=3, alpha = .3) +
-#     # geom_smooth(aes(color = HematoLineage, fill = HematoLineage)) +
-#     # stat_smooth(aes(shape = CellMarker), level = 2, size = 2) +
-#     stat_smooth(level = 2, size = 2) +
-#     # facet_wrap( ~ SubjectID, ncol = 4) +
-#     facet_grid(. ~ StudyID, scales = "free", space = "free") +
-#     scale_x_continuous(breaks = seq(0, max(allpatients_shared34_stats_supergroup_noCD34$FollowUp, na.rm = T), 6) ) +
-#     # stat_compare_means(comparisons = my_comparisons, label.y = c(40, 50, 30)) + # Add pairwise comparisons p-value
-#     # stat_compare_means(label.y = 60) + # Add global p-value
-#     theme(strip.text.x = element_text(size = 16, colour = "darkblue", angle = 0, face="bold"), strip.text.y = element_text(size = 16, colour = "darkred", angle = 270, face="bold")) +
-#     theme(axis.text.x = element_text(size=16), axis.text.y = element_text(size=16), axis.title = element_text(size=18), plot.title = element_text(size=20)) +
-#     labs(list(title = paste("Profile of CD34 BM output towards Myeloid/Lymphoid/Erythroid lineages"), x = "FollowUp months after GT", y = "Perc. of IS shared with CD34 BM", subtitle = "All clinical trials included, all patients included. WAS clinical trial includes early progenitors as supergroup of CD34."))
-# ) 
 
 
 
@@ -4083,26 +3661,6 @@ write.xlsx(x = allstudies_hspc_slice_summary_lt12, file = paste(hspce_base_folde
 write.xlsx(x = allstudies_hspc_slice_summary_gt24, file = paste(hspce_base_folder, "/", analysis_folder_date, "/", analysis_folder_date, ".HSPCsize.AllResults.ByPatient.summarystats_gt12m.PopSize_corrected_VCNCD34.xlsx", sep = ""), sheetName = ">= 24m", )
 
 
-# plot_data_slice <- allstudies_hspc_slice
-# plot_hspc_overtime <- ggplot(data = plot_data_slice, aes(x = FU_end, y = PopSize, fill = Study, color = Study), na.rm = T, se = TRUE) +
-#   # geom_point(aes(fill = SubjectID, color = SubjectID), size = 3, alpha = 0.7) +
-#   geom_pointrange(size = 3, alpha = 0.7) +
-#   geom_line(aes(group = SubjectID, color = "gray"), size = 1, alpha = 0.2) +
-#   # geom_errorbar(aes(ymin=(abundance-stderr), ymax=(abundance+stderr)), width=0.1) +
-#   # geom_smooth(stat = "smooth", position = "identity", span = 0.44) +
-#   geom_smooth(method = "loess", formula = y ~ splines::ns(x), stat = "smooth", position = "identity", alpha = 0.4, level = 0.75) +
-#   # scale_color_manual(values = scale_color_manual_colors_sortedbyname) +
-#   # scale_fill_manual(values = scale_color_manual_colors_sortedbyname) +
-#   # scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x)) ) +
-#   theme_bw() +
-#   scale_y_continuous(labels = scales::comma, limits = c(0,100000)) +
-#   scale_x_continuous(breaks = seq(0, max(plot_data_slice$FU_end, na.rm = T), 6), limits = c(0, 36)) +
-#   facet_wrap( ~ ClinicalStudy, ncol = 3) +
-#   theme(strip.text = element_text(face="bold", size=16)) +
-#   theme(legend.direction = "horizontal", legend.position = "bottom", legend.box = "horizontal") + 
-#   theme(axis.text.x = element_text(size=16), axis.text.y = element_text(size=16), axis.title = element_text(size=16), plot.title = element_text(size=20)) +
-#   labs(title = paste0("Estimate of population size of active and engrafted HSPC over time"), x = "Months after gene therapy", y = "HSPC estimate", colour = "Patient ID", fill = "Patient ID"
-#        )
 
 plot_hspc_overtime_by_patient <-
   # ggplot(data = allstudies_hspc_slice, aes(x = TimePoint_from, y = PopSize, fill = Study, color = Study), na.rm = T, se = TRUE) +
