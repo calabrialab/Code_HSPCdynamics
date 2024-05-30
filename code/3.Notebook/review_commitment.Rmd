@@ -1,0 +1,794 @@
+---
+title: "Good Turing and Bayesian regression"
+author: "Elena Buscaroli (elena.buscaroli@phd.units.it)<br>Cancer Data Science Laboratory, University of Trieste."
+date: "2024"
+output: 
+  rmdformats::readthedown:
+    self_contained: true
+    thumbnails: true
+    lightbox: true
+    gallery: false
+    highlight: tango
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+
+```{r include=FALSE}
+library(tidyverse)
+reticulate::source_python("r_functions/sklearn_pipe.py")
+```
+
+
+# Load data
+
+```{r message=FALSE, warning=FALSE, class.source="fold-hide", include=TRUE}
+# load ISs classification in multi- or uni-lineage
+classification = read.csv("hsccommitment/datasets/flags_timepoint_wXSCID.csv") %>% 
+  dplyr::filter(ClinicalStudy != "XSCID") %>% 
+  tibble::as_tibble() %>% 
+  
+  ## add classnames - different for BM and PB
+  dplyr::full_join(
+    readxl::read_xlsx("hsccommitment/data/MLD.hlfu_34MyBTEry_noLy_no34exclusive.flag_matrix.bagcases.xlsx") %>% 
+      dplyr::mutate(Tissue="BM") %>% 
+      dplyr::bind_rows(
+        readxl::read_xlsx("hsccommitment/data/MLD.hlfu_34PBMyBT_noLy_no34exclusive.flag_matrix.bagcases.xlsx") %>% 
+          dplyr::mutate(Tissue="PB")
+      ) %>% dplyr::rename(classcode=Label) %>% 
+      dplyr::select(classcode, ClassName, Tissue, colorcode)
+  )
+
+## load abundances for all ISs
+abundances = read.csv("hsccommitment/datasets/abundances_all_ISs_wXSCID.csv") %>% 
+  dplyr::filter(ClinicalStudy != "XSCID") %>% 
+  dplyr::mutate(IS=paste0("chr", paste(chr, integration_locus, strand, GeneName, GeneStrand, sep="_"))) %>% 
+  dplyr::select(-chr, -integration_locus, -strand, -GeneName, - GeneStrand) %>% 
+  dplyr::select(IS, dplyr::everything()) %>% tibble::as_tibble() %>% 
+  
+  ## add celltypes -> some markers removed
+  dplyr::left_join(
+    readxl::read_xlsx("paper docs/Calabria et al - HSC dynamics - Extended Data Tables 1-2.xlsx", sheet=1) %>% 
+      dplyr::select(CellMarker, Lineage) %>% unique() %>% dplyr::rename(CellType=Lineage),
+    by="CellMarker"
+  ) %>% 
+  
+  ## use by default the fragmentEstimate, when not present seqCount
+  dplyr::mutate(abundance=dplyr::case_when(!is.na(seqCount) ~ seqCount,
+                                           .default=fragmentEstimate))
+
+
+bthal_samples = c(paste0("BTHAL00", c(1,3:9)), "BTHAL010") %>% setNames(paste0("BTHAL", 1:9))
+new_sampleIDs = readxl::read_xlsx("CODES_PAPER_PATIENTID.xlsx", sheet=1) %>% 
+  dplyr::rename(SubjectID_old=`TIGET code`,
+                SubjectID=`NewID Paper 2024`) %>% 
+  dplyr::select(SubjectID_old, SubjectID) %>% unique() %>% dplyr::rowwise() %>% 
+  dplyr::mutate(SubjectID_old=replace(SubjectID_old, grepl("BTHAL", SubjectID_old),
+                                      bthal_samples[SubjectID_old])) %>% dplyr::ungroup()
+
+input_perc = classification %>% 
+  
+  ## remove unobserved ISs
+  dplyr::filter(ClassName!="Unobserved") %>% 
+  
+  ## add abundances -> keep only ISs with an abundance value
+  dplyr::inner_join(abundances, multiple="all", 
+                   by=c("IS","SubjectID","ClinicalStudy",
+                        "Tissue","TimepointMonths")) %>% 
+
+  dplyr::select(IS, SubjectID, ClinicalStudy, Tissue, TimepointMonths, 
+                CellType, CellMarker, abundance, ClassName, colorcode) %>% 
+
+  ## sum abundance across markers -> single abundance per CellType
+  dplyr::group_by(IS, SubjectID, ClinicalStudy, Tissue, TimepointMonths, CellType) %>% 
+  dplyr::summarise(abundance=sum(abundance), 
+                   ClassName=unique(ClassName), 
+                   colorcode=unique(colorcode)) %>% 
+  dplyr::ungroup() %>% unique() %>% 
+  
+  ## round abundances to obtain integers
+  dplyr::mutate(abundance=round(abundance)) %>% 
+  
+  dplyr::rename(SubjectID_old=SubjectID) %>% 
+  dplyr::left_join(new_sampleIDs) %>% 
+  dplyr::select(-SubjectID_old)
+
+
+## multilineage -> CD34 and/or >2 among B, T, Myeloid, Erythroid
+## unilineage -> CD34 and/or specific lineage
+celltype_list = input_perc %>% dplyr::select(ClassName) %>% unique() %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(celltype_list=dplyr::case_when(
+    ClassName=="Multilineage" ~ list(c("B","T","Myeloid","Erythroid","CD34")),
+    .default = list(c("CD34",stringr::str_replace_all(ClassName, "Uni|_|Ly",""))))) %>%
+  dplyr::ungroup()
+```
+
+# Good Turing correction
+
+To compute the adjusted number of species, we applied the Good Turing (GT) estimator. We will show results following three approaches. 
+
+- In the first case, we first compute a cumulative abundance for each IS summing abundances over all lineages and then apply the single assemblage formulation. 
+
+- In the second case, we use the GT estimator to compute the number of shared species among multiple assemblages to compute the number of shared species among all four mature lineages into consideration (B, T, Myeloid and Erythroid).
+
+- In the third case, we compute the number of shared species among mature lineages in which we observed the ISs into consideration.
+
+## Formulation
+
+In the following sections we will follow different GT formulations. We assume the presence of $S$ species and relative true abundances. In general, we can decompose $S$ as follows 
+
+$S=S_{obs} + f_0$, 
+
+where $f_0$ represents the count of undetected species.
+
+In the one-assemblage formulation, the GT formulation provides a lower bound estimation for $f_0$:
+
+$\hat f_0 \geq \frac{N-1}{2N} \frac{f_1^2}{f_2}$,
+
+with $f_1$ and $f_2$ the number of singletons and doubletons, and $N$ the sample size. This formulation corresponds to the Chao1 richness estimation.
+
+
+In the two-assemblages formulation, we must account for the number of undetected species in the first assemblages and observed in the second, viceversa and the count of species undetected in both assemblages. Thus, the true number of shared species between the assemblages is defined as 
+
+$S_{shared} = S_{shared,obs} + f_{0+} + f_{+0} + f_{00}$.
+
+Similarly to the previous case, the GT formulation provides an estimate for the last three terms:
+\begin{align*}
+  &\hat f_{0+} \geq \frac{N_1-1}{2N_1} \frac{f_{1+}^2}{f_{2+}} \\
+  &\hat f_{+0} \geq \frac{N_2-1}{2N_2} \frac{f_{+1}^2}{f_{+2}} \\
+  &\hat f_{00} \geq \frac{N_1-1}{2N_1} \frac{N_2-1}{2N_2} \frac{f_{11}^2}{f_{22}}
+\end{align*}
+
+Lastly, the GT can be further generalized to estimate the number of shared species among any number of lineages. Here, we will show the GT generalized to the case of 4 assemblages.
+
+The true number of shared species among the 4 assemblages is defined as
+\begin{align*}
+    S_{shared} =  & S_{shared,obs} + \\
+                  & f_{0+++} + f_{+0++} + f_{++0+} + f_{+++0} + \\
+                  & f_{00++} + f_{0+0+} + f_{0++0} + f_{+00+} + f_{+0+0} + f_{++00} + \\
+                  & f_{000+} + f_{00+0} + f_{0+00} + f_{+000} + \\
+                  & f_{0000}
+\end{align*}
+
+Similarly to the previous cases, each term can be approximated via GT as follows
+
+\begin{align*}
+    &\hat f_{0+++} \geq k_1 \frac{f_{1+++}^2}{f_{2+++}} \\
+    &\hat f_{00++} \geq k_1 k_2 \frac{f_{11++}^2}{f_{22++}} \\
+    &\hat f_{000+} \geq k_1 k_2 k_3 \frac{f_{111+}^2}{f_{222+}} \\
+    &\hat f_{0000} \geq k_1 k_2 k_3 k_4 \frac{f_{1111}^2}{f_{2222}}
+\end{align*}
+
+and similarly for the other terms. Here we define, for each assemblage $i$, $k_i=\frac{N_i-1}{2N_i}$.
+
+
+And we can define the number species observed as singletons in one or more assemblages and observed at higher frequency in the others. 
+\begin{align*}
+    f_{1+++} = \sum_{i=1}^{S_{shared}} I( X_i^{(1)} = 1 \wedge
+                                               X_i^{(2)} > 0 \wedge
+                                               X_i^{(3)} > 0 \wedge
+                                               X_i^{(4)} > 0 ) \\
+    f_{11++} = \sum_{i=1}^{S_{shared}} I( X_i^{(1)} = 1 \wedge
+                                               X_i^{(2)} = 1 \wedge
+                                               X_i^{(3)} > 0 \wedge
+                                               X_i^{(4)} > 0 ) \\
+    f_{111+} = \sum_{i=1}^{S_{shared}} I( X_i^{(1)} = 1 \wedge
+                                               X_i^{(2)} = 1 \wedge
+                                               X_i^{(3)} = 1 \wedge
+                                               X_i^{(4)} > 0 ) \\
+    f_{1111} = \sum_{i=1}^{S_{shared}} I( X_i^{(1)} = 1 \wedge
+                                               X_i^{(2)} = 1 \wedge
+                                               X_i^{(3)} = 1 \wedge
+                                               X_i^{(4)} = 1 )
+\end{align*}
+
+
+Note we can also define the number of detected shared species as follows
+\begin{align*}
+    \hat f_{++++} &= \sum_{i=1}^{S_{shared}} I( X_i^{(1)} > 0 \wedge
+                                                X_i^{(2)} > 0 \wedge
+                                                X_i^{(3)} > 0 \wedge
+                                                X_i^{(4)} > 0) \\
+                   &= S_{shared,obs}
+\end{align*}
+
+
+## Implementation
+
+The input dataframe reports for each IS the classification and abundance for each lineage and timepoint. We will treat IS as species, and distinct lineages as assemblages. Therefore, starting from ISs abundances, we compute the number of singletons and doubletons required by the GT method to estimate the number of undetected species.
+
+In all analyses the resulting variable of interest is defined for each time-point as the ratio between number of ISs observed in a specific group (i.e., multi-lineage or one of the uni-lineages) and the total number of ISs captured.
+
+### Case 1: single assemblage richness
+
+To compute the Chao1 richness estimator, we first compute for each IS $i$ the cumulative abundance, summing the abundances of all cell types assigned to the IS label such that $\sum_{a \in A_l} x_i^{(a)}$ ($A_l=$ set of cell types associated to label $l$, $X=$vector of abundances). In this way, we obtain one vector of abundances for each class. We correct the values of resulting abundances for each class, via the Chao1 richness estimator.
+
+The considered cell types are 
+
+  - multi-lineage: B, T, Myeloid, Erythroid and CD34
+  - uni-lineage: CD34 and the corresponding mature lineage.
+
+Function to compute the richness using the single assemblage formulation.
+
+```{r}
+compute_richness = function(assemblages_df, subset_cols, gt=FALSE) {
+  ## if more than one lineage -> sum abundances over lineages
+  if (length(subset_cols) > 1) {
+    sample1 = get_sample_multilineage(assemblages_df, subset_cols)
+  } else {
+    sample1 = assemblages_df %>% tibble::column_to_rownames(var="IS") %>% 
+        dplyr::pull(subset_cols) %>% round()
+  }
+  
+  ## S_obs -> number of ISs with positive abundance
+  s_obs = sum(sample1 > 0)
+  if (gt == FALSE) return(s_obs)
+  return(Richness(sample1))
+}
+```
+
+Function to get a unique value of abundance for each IS, i.e., summing over lineages.
+
+```{r}
+get_sample_multilineage = function(assemblages_df, subset_cols) {
+  return(
+    assemblages_df %>%
+      tibble::column_to_rownames(var="IS") %>%
+      dplyr::select(dplyr::all_of(subset_cols)) %>%
+      rowSums() %>% round()
+  )
+}
+```
+
+Compute the richness for the single assemblage case, i.e., using the Chao1 estimator.
+
+```{r}
+Richness = function(da) {
+  n = sum(da)  ## sample size
+  obs = sum(da > 0)  ## number of observed species
+  f1 = sum(da == 1)  ## number of singletons
+  f2 = sum(da == 2)  ## mumber of doubletons
+  k = (n-1) / (2*n)  ## multiplicative factor
+
+  ## final estimate
+  if (f2 == 0) return( obs + k * f1*(f1-1) )
+  return( obs + k * f1^2/f2 )
+}
+```
+
+Compute the richness for each class.
+
+```{r message=FALSE, warning=FALSE}
+res_perc_richness = input_perc %>%
+  dplyr::filter(!is.na(CellType)) %>%
+  dplyr::inner_join(celltype_list) %>%
+  tidyr::pivot_wider(names_from="CellType",
+                     values_from="abundance",
+                     values_fill=0) %>%
+  dplyr::group_by(SubjectID, ClinicalStudy, Tissue, TimepointMonths,
+                  ClassName, celltype_list, colorcode) %>%
+  tidyr::nest() %>%
+  
+  ## compute richness
+  dplyr::summarise(
+    ## compute the Chao1 richness
+    gt_richness=compute_richness(assemblages_df=data[[1]], 
+                                 gt=TRUE,
+                                 subset_cols=unique(unlist(celltype_list[[1]]))),
+    
+    ## compute the empirical richness, with no correction
+    emp_richness=compute_richness(assemblages_df=data[[1]], 
+                                 gt=FALSE,
+                                 subset_cols=unique(unlist(celltype_list[[1]])))
+    ) %>%
+  dplyr::ungroup() %>% 
+  dplyr::select(-celltype_list)
+
+res_perc_richness %>% dplyr::select(SubjectID, Tissue, TimepointMonths, ClassName, gt_richness)
+```
+
+
+### Case 2: multilineage richness
+
+In the multi-lineage analysis, to compute the correct value of shared multi-potent species, we apply the Good Turing estimator generalized to four assemblages. In this way we are considering only the ISs shared by all mature lineages and correcting this value accounting for the number of singletons and doubletons in combinations of assemblages. In this case, if an IS is not observed in all mature lineages, it will not be accounted for in the final count.
+
+
+Function to compute that will compute the GT estimator for the number of shared species among the mature lineages stored in `subset_cols`. If a set of ISs has been observed in only one lineage, the function will compute the single assemblage estimator (Chao1 estimator) as in the previous case. Otherwise, it will compute the estimate via the multiple assemblages GT estimator.
+
+```{r}
+gt_shared_species_multilineage = function(assemblages_df, subset_cols) {
+  ## if only one lineage -> single assemblage correction
+  if (length(subset_cols) == 1) {
+    return(
+      compute_richness(assemblages_df=assemblages_df, gt=TRUE,
+                       subset_cols=subset_cols)
+    )
+  }
+
+  ## S_obs -> number of species for which all lineages have nonzero abundance
+  s_obs = sum(rowSums(assemblages_df[,subset_cols] > 0) == length(subset_cols))
+  
+  if (s_obs == 0) return(0)
+  
+  ## store in a table if an IS has abundance equal to 1, 2 or positive 
+  ## this will be reused in following computations when computing GT terms
+  stats_df = assemblages_df %>% 
+    reshape2::melt(id="IS", variable.name="Lineage", value.name="abundance") %>% 
+    dplyr::filter(Lineage %in% subset_cols) %>% 
+    dplyr::mutate(abundance=round(abundance)) %>% 
+    dplyr::mutate(is_1=abundance==1,
+                  is_2=abundance==2,
+                  is_present=abundance>0)
+
+  ## compute the value of K for each assemblage
+  Ks = lapply(subset_cols, function(sname) {
+    ab_i = assemblages_df[, sname]
+    Ni = max(1, sum(ab_i, na.rm=T))
+    (Ni - 1) / (2*Ni)
+  }) %>% setNames(subset_cols) %>% unlist()
+  
+  ## create combinations -> with A assemblages, we have (2^A-1) terms
+  poss_ops = list("==", ">")
+  combinations = expand.grid(rep(list(poss_ops), length.out=length(subset_cols)))
+  
+  ## compute the estimate of all combinations of unseen species
+  all_sh = lapply(1:nrow(combinations), function(i) {
+    operations = combinations[i, ] %>% unlist() %>% setNames(subset_cols)
+    if (all(operations == ">")) 0  # this is equal to s_obs
+    shared_i = gt_estimate_generalized(stats_df=stats_df, operations=operations)
+    
+    ## we have to multiply only for the Ks of the assemblages 
+    vals = ifelse(operations=="==", 1, 0)
+    shared_i * (Ks * vals)
+  }) %>% unlist()
+
+  ## sum all terms to obtain the final estimate
+  return(s_obs + sum(all_sh))
+}
+```
+
+
+```{r}
+gt_estimate_generalized = function(stats_df, operations) {
+  lineages = stats_df$Lineage %>% unique() %>% as.character()
+  
+  ## code each lineage to the corresponding operation (==0 or >0)
+  stats_df = stats_df %>% 
+    dplyr::inner_join(tibble::tibble(Lineage=names(operations), ops=operations))
+
+  ## number of species with abundance 2 in the corresponding lineages and >0 in the others
+  shared_2 = sum(
+    (stats_df %>% 
+       dplyr::mutate(value=dplyr::case_when(ops=="==" ~ is_2,
+                                            ops==">" ~ is_present)) %>% 
+       dplyr::select(IS, Lineage, value) %>% 
+       tidyr::pivot_wider(names_from="Lineage", values_from="value") %>% 
+       dplyr::select(-IS) %>% rowSums()) == length(lineages)
+    )
+  
+  ## number of species with abundance 1 in the corresponding lineages and >0 in the others
+  shared_1 = sum(
+    (stats_df %>% 
+       dplyr::mutate(value=dplyr::case_when(ops=="==" ~ is_1,
+                                            ops==">" ~ is_present)) %>% 
+       dplyr::select(IS, Lineage, value) %>% 
+       tidyr::pivot_wider(names_from="Lineage", values_from="value") %>% 
+       dplyr::select(-IS) %>% rowSums()) == length(lineages)
+    )
+  
+  if (shared_1 == 0) return(0)
+  
+  ## if denominator is 0
+  if (shared_2 == 0) return( shared_1 * (shared_1-1) )
+  
+  return( shared_1^2 / shared_2 )
+}
+```
+
+
+
+```{r message=FALSE}
+res_perc_multi = input_perc %>%
+  dplyr::filter(!is.na(CellType)) %>%
+  dplyr::inner_join(celltype_list) %>%
+
+  ## retain only mature lineages
+  dplyr::mutate(celltype_list=dplyr::case_when(
+    ClassName == "Multilineage" ~ list(celltype_list[[1]] %>% purrr::discard(function(x) x=="CD34")),
+    .default=celltype_list
+  )) %>%
+
+  tidyr::pivot_wider(names_from="CellType", values_from="abundance", values_fill=0) %>%
+  dplyr::group_by(SubjectID, ClinicalStudy, Tissue, TimepointMonths,
+                  ClassName, celltype_list, colorcode) %>%
+  tidyr::nest() %>%
+  dplyr::summarise(
+    ## compute the multilineage correction on all mature lineages
+    gt_multilineage=gt_shared_species_multilineage(assemblages_df=data[[1]],
+                                                   subset_cols=unique(unlist(celltype_list[[1]]))),
+    
+    ## compute the single assemblage richness (Chao1)
+    gt_richness=compute_richness(assemblages_df=data[[1]], gt=TRUE,
+                                 subset_cols=unique(unlist(celltype_list[[1]])))
+    ) %>%
+  dplyr::ungroup() %>% 
+  
+  dplyr::select(-celltype_list) %>% 
+  
+  ## if not multilineage -> use the Chao1 richness
+  dplyr::mutate(gt_multilineage=dplyr::case_when(
+    ClassName!="Multilineage" ~ gt_richness,
+    .default=gt_multilineage
+    )) %>% dplyr::select(-gt_richness)
+
+res_perc_multi %>% dplyr::select(SubjectID, Tissue, TimepointMonths, ClassName, gt_multilineage)
+```
+
+
+### Case 3: maximum overlap among lineages
+
+In the maximum overlap analysis, we apply the Good Turing estimator generalized to multiple assemblages. Differently from the multi-lineage analysis, in this case for each IS we consider the subset of lineages in which we observe the IS. In this way, the correction accounts for the IS abundance in distinct lineages. 
+
+This is applied also to the uni-lineage case. In this case the assemblages taken into consideration are CD34 and the specific mature lineage of the class.
+
+
+```{r message=FALSE, warning=FALSE}
+res_perc_overlap = input_perc %>%
+  dplyr::filter(!is.na(CellType)) %>%
+  dplyr::inner_join(celltype_list) %>%
+
+  ## define if an ISs is found or not in a lineage
+  dplyr::mutate(in_lineage=dplyr::case_when(abundance>0 ~ CellType, .default=NA)) %>%
+
+  ## select the cell types the IS has been observed in
+  dplyr::group_by(IS, SubjectID, ClinicalStudy, Tissue, TimepointMonths) %>%
+  dplyr::mutate(celltype_list=list(intersect(unique(in_lineage), celltype_list[[1]]))) %>%
+  dplyr::ungroup() %>% dplyr::select(-in_lineage) %>%
+
+  dplyr::rowwise() %>%
+  dplyr::filter(length(celltype_list) > 0) %>%
+  dplyr::ungroup() %>%
+
+  tidyr::pivot_wider(names_from="CellType",
+                     values_from="abundance",
+                     values_fill=0) %>%
+  dplyr::group_by(SubjectID, ClinicalStudy, Tissue, TimepointMonths,
+                  ClassName, celltype_list, colorcode) %>%
+  tidyr::nest() %>%
+  dplyr::summarise(
+    gt_overlap=gt_shared_species_multilineage(assemblages_df=data[[1]],
+                                              subset_cols=unique(unlist(celltype_list[[1]])))) %>%
+  dplyr::ungroup() %>% 
+  
+  dplyr::group_by(SubjectID, ClinicalStudy, Tissue, TimepointMonths, ClassName, colorcode) %>%
+  dplyr::summarise(gt_overlap=sum(gt_overlap)) %>% dplyr::ungroup()
+
+res_perc_overlap %>% dplyr::select(SubjectID, Tissue, TimepointMonths, ClassName, gt_overlap)
+```
+
+### Ratio
+
+Merge all datasets and compute ratio.
+```{r}
+res_perc = res_perc_overlap %>% 
+    tidyr::pivot_longer(cols="gt_overlap",
+                        names_to="method", values_to="value") %>% 
+
+  dplyr::bind_rows(res_perc_multi %>% 
+                     tidyr::pivot_longer(cols="gt_multilineage",
+                                         names_to="method", values_to="value")) %>% 
+  
+  dplyr::bind_rows(
+    res_perc_richness %>% 
+      tidyr::pivot_longer(cols=c("gt_richness", "emp_richness"),
+                          names_to="method", values_to="value")
+  )
+
+ratio_df = res_perc %>% 
+  dplyr::group_by(SubjectID, ClinicalStudy, Tissue, TimepointMonths, method) %>% 
+  dplyr::mutate(ratio=value/sum(value)*100) %>% 
+  dplyr::ungroup()
+
+ratio_df
+```
+
+Visualize the sharing ratio comparing the distinct methods.
+
+```{r fig.height=8, fig.width=20, warning=FALSE, class.source="fold-hide"}
+color_pal_perc = classification$colorcode %>% unique() %>%
+  setNames(classification$ClassName %>% unique())
+
+ratio_df %>% 
+  dplyr::filter(TimepointMonths<=60, ClassName=="Multilineage") %>%
+  
+  dplyr::mutate(method=dplyr::case_when(
+    method == "emp_richness" ~ "Pre-correction",
+    method == "gt_richness" ~ "Chao1",
+    method == "gt_multilineage" ~ "All lineages",
+    method == "gt_overlap" ~ "Maximum overlap"),
+    method=factor(method, levels=c("Pre-correction", "Chao1", "All lineages", "Maximum overlap"))) %>% 
+  
+  ggplot() +
+  geom_smooth(aes(x=TimepointMonths, y=ratio, color=method, fill=method),
+              method="loess", 
+              formula=y~log(x),
+              stat="smooth",
+              position="identity", alpha=0.4, level=0.75, se=T) +
+  
+  ggh4x::facet_nested(ClassName + Tissue ~
+                        factor(ClinicalStudy, levels=c("MLD","WAS","BTHAL")),
+                      scales="free", space="free_x") +
+  scale_x_continuous(breaks = seq(0, max(ratio_df$TimepointMonths, na.rm = T), 12)) +
+  theme_bw() +
+  theme(strip.text=element_text(face="bold", size=16)) +
+  theme(legend.position="right") +
+  theme(axis.text.x=element_text(size=16), axis.text.y=element_text(size=16),
+        axis.title=element_text(size=16), plot.title=element_text(size=20)) +
+  labs(x="Months after gene therapy", y="% IS", colour="ClassName", fill="ClassName")
+
+```
+
+
+# Bayesian regression
+
+On the dataframe with the sharing ratio computed, we apply a Bayesian linear regression to adjust for the covariates that might confound the observed values.
+
+## Load covariates
+
+```{r message=FALSE, warning=FALSE, class.source="fold-hide"}
+patients_infos = read.csv("datasets/patients_age.csv") %>% 
+  dplyr::rename(SubjectID_old=SubjectID) %>% 
+  dplyr::left_join(new_sampleIDs) %>% 
+  dplyr::select(-SubjectID_old)
+
+full.data = ratio_df %>%
+  dplyr::left_join(patients_infos) %>%
+  tibble::as_tibble() %>% 
+  dplyr::rename(Timepoint=TimepointMonths)
+
+color_pal = full.data$colorcode %>% unique() %>% setNames(unique(full.data$ClassName))
+
+div.all = openxlsx::read.xlsx("diversity/data/202112.Diversity.ByMarker.xlsx") %>%
+  tibble::as_tibble() %>% 
+  dplyr::rename(ClinicalStudy=ClinicalTrial) %>% 
+  dplyr::mutate(NGSTechnology=tolower(NGSTechnology),
+                PCRMethod=tolower(PCRMethod)) %>% 
+  dplyr::rename(Timepoint=TimePoint) %>% 
+  
+  dplyr::rename(SubjectID_old=SubjectID) %>% 
+  dplyr::left_join(new_sampleIDs) %>% 
+  dplyr::select(-SubjectID_old)
+
+
+ng_scaled = div.all %>%
+  dplyr::left_join(patients_infos) %>% 
+  dplyr::filter(CellMarker %in% c("CD34", "CD13", "CD14", "CD15", "GLY",
+                                  "CD36", "CD19", "CD3", "CD4", "CD8")) %>%
+  dplyr::select(SubjectID, ClinicalStudy, Tissue, Timepoint, CellType,
+                ng.DNA.corrected_sum, infused_cells, age, NGSTechnology, 
+                Gender, PCRMethod) %>% 
+
+  dplyr::group_by(SubjectID, ClinicalStudy, Tissue, Timepoint, CellType) %>%
+  dplyr::mutate(mean_ng=mean(ng.DNA.corrected_sum)) %>% unique() %>% 
+  dplyr::ungroup() %>% 
+  
+  dplyr::filter(CellType != "CD34") %>% 
+  dplyr::mutate(ClassName=dplyr::case_when(
+    CellType == "T" ~ "UniLyT",
+    CellType == "B" ~ "UniLyB",
+    CellType == "Myeloid" ~ "UniMyeloid",
+    CellType == "Erythroid" ~ "UniErythroid"
+  )) %>% dplyr::select(-CellType, -ng.DNA.corrected_sum) %>% 
+  dplyr::group_by(SubjectID, Tissue, Timepoint, ClassName) %>% 
+  dplyr::mutate(NGSTechnology=paste(unique(NGSTechnology),collapse="|"),
+                PCRMethod=paste(unique(PCRMethod),collapse="|")) %>% 
+  dplyr::ungroup() %>% unique()
+
+
+ng_scaled2 = div.all %>%
+  dplyr::left_join(patients_infos) %>% 
+  dplyr::filter(CellMarker %in% c("CD34", "CD13", "CD14", "CD15", "GLY",
+                                  "CD36", "CD19", "CD3", "CD4", "CD8")) %>%
+  dplyr::select(SubjectID, ClinicalStudy, Tissue, Timepoint,
+                ng.DNA.corrected_sum, infused_cells, age, NGSTechnology, 
+                Gender, PCRMethod) %>% unique() %>% 
+
+  dplyr::group_by(SubjectID, ClinicalStudy, Tissue, Timepoint) %>%
+  dplyr::mutate(mean_ng=mean(ng.DNA.corrected_sum)) %>%
+  dplyr::mutate(ClassName="Multilineage") %>%
+  dplyr::ungroup() %>% 
+  dplyr::select(-ng.DNA.corrected_sum) %>% 
+  dplyr::group_by(SubjectID, Tissue, Timepoint, ClassName) %>% 
+  dplyr::mutate(NGSTechnology=paste(unique(NGSTechnology),collapse="|"),
+                PCRMethod=paste(unique(PCRMethod),collapse="|")) %>% 
+  dplyr::ungroup() %>% unique()
+
+
+nISs_VCN = readxl::read_xlsx( "hsccommitment/data/MLD_WAS_BTHAL.AllPatients.hlfu_34MyBTEry.global_allstudies_profile_skewing_fulldata_notNA_stats.xlsx") %>%
+  dplyr::select(SubjectID, ClinicalStudy, Tissue, Timepoint,
+                ClassName, CRonR, OverallNIS, VCN) %>% 
+  
+  dplyr::rename(SubjectID_old=SubjectID) %>% 
+  dplyr::left_join(new_sampleIDs) %>% 
+  dplyr::select(-SubjectID_old)
+
+
+subs = full.data %>%
+  dplyr::left_join(ng_scaled %>% dplyr::add_row(ng_scaled2)) %>%
+  dplyr::left_join(nISs_VCN) %>% 
+  dplyr::select(ClinicalStudy, SubjectID, ClassName, Timepoint, Tissue,
+                dplyr::contains("ratio"), colorcode, age, infused_cells,
+                dplyr::contains("_ng"), OverallNIS, VCN, NGSTechnology, 
+                PCRMethod, Gender, method) %>% 
+  dplyr::mutate(AgeGroup=dplyr::case_when(
+    age <= 2 ~"0-2", age <= 15 ~"2-15", age > 15 ~"30+"))
+
+```
+
+## Auxiliary functions
+
+Function to run two fits: the first one with only `Timepoint` as covariate, the second one with all covariates.
+
+```{r class.source="fold-hide"}
+do_all_fits = function(nested.tab, y_col, cols_fit) {
+  nested.tab %>% 
+    dplyr::summarise(
+      fit0 = list(fit_pipeline( get_x(data, to_py=T),
+                                get_y(data, column=y_col, to_py=T),
+                                get_x(data, to_py=T),
+                                subset=reticulate::tuple(c("Timepoint")))),
+      fit1 = list(fit_pipeline( get_x(data, to_py=T),
+                                get_y(data, column=y_col, to_py=T),
+                                get_x(data, to_py=T),
+                                subset=cols_fit)),
+      data = data,
+      .groups="keep")
+}
+
+## Function to generate a new test dataset, to resemble the data input, 
+## considering only the subset columns
+
+generate_x_test = function(data, subset, to_py=F){
+  data = data[[1]] %>% as.data.frame()
+  
+  x_test = list()
+  for (covar in subset) {
+    if (is.character(data[,covar]))
+      x_test[[covar]] = data[,covar] %>% unique()
+    else
+      x_test[[covar]] = seq(min(data[,covar]), max(data[,covar]), length.out=70)
+  }
+  
+  if (to_py)
+    return(expand.grid(x_test) %>% setNames(subset) %>% reticulate::r_to_py())
+  return(expand.grid(x_test) %>% setNames(subset))
+}
+
+## Functions to retrieve the correct format for y and x dataframes
+
+get_y = function(df, column, to_py=F) {
+  if (is.list(df)) df = df[[1]]
+  
+  df = df %>% 
+    dplyr::select(dplyr::where(function(x) any(!is.na(x)))) %>% 
+    tidyr::drop_na()
+  
+  if (to_py)
+    return(as.data.frame(df)[,column] %>% reticulate::np_array()) 
+  
+  return(as.data.frame(df)[,column]) 
+}
+
+get_x = function(df, to_py=F) {
+  if (is.list(df)) df = df[[1]]
+  
+  df = df %>% 
+    dplyr::select(dplyr::where(function(x) any(!is.na(x)))) %>% 
+    tidyr::drop_na()
+  
+  if (to_py)
+    return( df %>% as.data.frame() %>% reticulate::r_to_py() )
+  
+  return(df %>% as.data.frame())
+}
+
+```
+
+### Fit the model
+
+We store in a list the set of covariates we want to include as confounding factors.
+
+```{r}
+cols_fit = c("Timepoint", "mean_ng", "nIS", "VCN_avg", "infused_cells", 
+             "NGSTechnology", "PCRMethod", "Gender", "age")
+```
+
+```{r}
+## nested df
+nested.fit = subs %>%
+  dplyr::group_by(Tissue, ClinicalStudy, ClassName, method) %>%
+  tidyr::nest() %>% 
+  do_all_fits(y_col="ratio", cols_fit=cols_fit) %>% 
+  dplyr::mutate(y_col="ratio")
+
+
+## Unnest preds ####
+unnested = nested.fit %>%
+  dplyr::ungroup() %>%
+  tidyr::pivot_longer(cols=tidyr::starts_with("fit"), names_to="fitname") %>%
+  tidyr::unnest_wider(value) %>%
+  tidyr::unnest(cols=c("fitname","SubjectID","Timepoint", "method",
+                       "mean_ng", "ratio", "OverallNIS", "AgeGroup",
+                       "VCN", "age", "infused_cells", "NGSTechnology", "PCRMethod", 
+                       "Gender", "colorcode", "fit")) %>%
+  
+  dplyr::rename(pred=fit) %>%
+  dplyr::mutate(regression_formula=dplyr::case_when(
+    fitname == "fit0" ~ paste0(y_col, " ~ TimePoint"),
+    fitname == "fit1" ~ paste0(y_col, " ~ ", paste(cols_fit, collapse=" + "))
+  )) %>% 
+  
+  dplyr::mutate(final=fitname=="fit1")
+
+```
+
+
+### Results
+
+Visualize the results.
+
+```{r fig.height=16, fig.width=20, message=FALSE, warning=FALSE, class.source="fold-hide"}
+regr_formula = unnested %>% dplyr::filter(final) %>% 
+  dplyr::pull(regression_formula) %>% unique()
+
+unnested %>%
+  dplyr::filter(final) %>% 
+  dplyr::mutate(method=dplyr::case_when(
+    method == "emp_richness" ~ "Pre-correction",
+    method == "gt_richness" ~ "Chao1",
+    method == "gt_multilineage" ~ "All lineages",
+    method == "gt_overlap" ~ "Maximum overlap")) %>%
+  
+  dplyr::mutate(method=factor(method, levels=c("Pre-correction", "Chao1",
+                                               "All lineages", "Maximum overlap"))) %>%
+  
+  dplyr::filter(method %in% c("Chao1", "Maximum overlap")) %>% 
+
+  ggplot() +
+  geom_smooth(aes(x=Timepoint, y=pred, fill=ClassName, color=ClassName),
+              se=TRUE, level=.75, alpha=0.4, formula=y~log(x), 
+              stat="smooth", position="identity") +
+  
+  scale_color_manual(values=color_pal) +
+  scale_fill_manual(values=color_pal) +
+  
+  scale_x_continuous(breaks = seq(0, max(unnested$Timepoint, na.rm=T), 12) ) +
+  ggh4x::facet_nested(method + Tissue ~ 
+                        factor(ClinicalStudy, levels=c("MLD","WAS","BTHAL")), 
+                      scales="free_x", space="free_x") +
+  theme_bw() +
+  theme(strip.text=element_text(face="bold", size=16)) +
+  theme(legend.direction="horizontal", legend.position="bottom", 
+        legend.box="horizontal") +
+  theme(axis.text.x=element_text(size=16), axis.text.y=element_text(size=16), 
+        axis.title=element_text(size=16), plot.title=element_text(size=20)) +
+  labs(title = paste0("Recaptured IS in percentage"), 
+       subtitle = paste0("Regression: ", regr_formula),
+       x="Months after gene therapy", y="% of IS", 
+       colour="Class", fill="Class") + ylim(0,100)
+
+```
+
+The distance between the distributions can be assessed via statistical tests, such as the Kolmogorov-Smirnov (KS) test. 
+This method quantifies a distance between the empirical of the two samples, assuming as null hypothesis that the two samples were drawn from the same distribution.
+
+
+
+
