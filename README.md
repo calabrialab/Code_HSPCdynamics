@@ -10,8 +10,8 @@ This repository stores the code and data we used to analyze the clonal dynamics 
 We organized the code in the folder [code](code) as follows: 
 - Step 1: run ISAnalytics on raw matrixes to generate the first results per patient and per study. Folder [ISAnalytics](code/1.ISAnalytics_AnalysesPerStudy).
 - Step 2: compare studies and patients starting from the results generated in Step 1. All scripts are available in the folder [Compararive Analyses](code/2.Comparative_Analyses). Within this folder, you will also find the code used for confounding factor removal (Bayesian model) and Good Turing model (folder [GoodTuring](code/2.Comparative_Analyses/GoodTuring)).
-- Notebook: here we release the code of our Bayesian regression and Good Turing model. The HTML file needs to be downloaded.
-- An additional folder of utils is added, including the functions required for the analysis of lineage ourput and commitment (overall and at single clone resolution).
+- [*Notebook*](code/Notebook) here we release the code of our Bayesian regression and Good Turing model, and analytical checks for regressions. HTML (and Rmd) files need to be downloaded for a preview.
+- An additional folder [*utils*](code/utils) contains the functions required for the analysis of lineage ourput and commitment (per patient in percentage and at a single-clone resolution).
 
 ## Data
 All matrixes per patient are available in the folder [data](data), grouped by Disease and then named with the prefix of each patient ID.
