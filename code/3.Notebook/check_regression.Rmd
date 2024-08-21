@@ -1,0 +1,89 @@
+---
+title: "Regression assumptions check"
+author: "Elena Buscaroli (elena.buscaroli@phd.units.it)<br>Cancer Data Science Laboratory, University of Trieste."
+date: "2024"
+output: 
+  rmdformats::readthedown:
+    self_contained: true
+    thumbnails: true
+    lightbox: true
+    gallery: false
+    highlight: tango
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+require(ggplot2)
+```
+
+# Load datasets
+```{r}
+main_path = "~/Dropbox/dropbox_shared/HSC dynamics/"
+setwd(main_path)
+
+fittype = "noAge"
+committment = read.csv(paste0(main_path, "regression_datasets/PRED_commitment.csv")) %>% 
+  dplyr::mutate(residuals=ratio_chao - pred_chao) %>% 
+  dplyr::filter(fittype == !!fittype, final_noage) %>% 
+  dplyr::rename(pred=pred_chao)
+```
+
+# Residuals plot
+
+Here we show the residuals plot, reporting predicted values vs residuals (computed as $ y_{obs} - y_{pred} $, assuming y to be our response variable). 
+
+From these results, we don't observe identifiable patterns in the residuals, showing that the residuals are randomly distributed around zero, with no systematic variability in the variance. Moreover, since no patterns are identified in any of the fits, we can assume the regression was able to capture the relationships among the covariates and the response variables.
+
+
+```{r fig.height=15, fig.width=20}
+committment %>% 
+  ggplot() +
+  geom_hline(aes(yintercept=0), linetype="dashed", linewidth=.5) +
+  geom_point(aes(x=pred, y=residuals, color=ClassName)) +
+  ggh4x::facet_nested(Tissue + ClassName ~ ClinicalStudy, scales="free") +
+  theme_bw()
+```
+
+
+# QQ-plot
+
+Here we report a QQ-plot to assess whether the residuals are normally distributed. 
+The results clearly show this assumption is fulfilled.
+
+```{r fig.height=15, fig.width=20}
+committment %>%
+  ggplot(aes(sample=residuals, color=ClassName)) + 
+  stat_qq_line(color="black") + stat_qq() +
+  ggh4x::facet_nested(Tissue + ClassName ~ ClinicalStudy, scales="free_x") +
+  theme_bw()
+```
+
+
+# Correlation between residuals
+
+Last, to assess whether there is correlation among residuals, we employed the Durbin-Watson statistics for each fit. In general we can consider values close to 2 show no autocorrelation (independence), values close to 0 show positive autocorrelation, values close to 4 show negative autocorrelation. 
+
+Here we show how the main distribution of the results is around 2, showing no autocorrelation.
+
+```{r message=FALSE, warning=FALSE, fig.height=4, fig.width=4}
+committment %>%
+  dplyr::group_by(Tissue, ClassName, ClinicalStudy) %>% 
+  dplyr::summarise(DW=car::durbinWatsonTest(residuals)) %>% 
+  
+  ggplot() +
+  geom_boxplot(aes(y=DW)) +
+  theme_bw() +
+  theme(axis.text.x=element_blank(), axis.ticks.x=element_blank()) +
+  ylim(0,4)
+
+```
+
