@@ -1,5 +1,5 @@
 # Code HSPCdynamics
-Code for Calabria et al, under revision.
+Code used in _Andrea Calabria_ et al, Nature 2024 ([DOI: 10.1038/s41586-024-08250-x](https://www.nature.com/articles/s41586-024-08250-x)).
 
 This repository stores the code and data we used to analyze the clonal dynamics in vivo in patients under Lentiviral Hematopoietic Stem Cell Gene Therapy for the diseases:
 - metachromatic leukodystrophy (MLD),
